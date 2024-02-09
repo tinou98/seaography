@@ -159,13 +159,7 @@ impl TypesMapHelper {
             #[cfg(not(feature = "with-json"))]
             ColumnType::Json => ConvertedType::String,
             #[cfg(feature = "with-json")]
-            ColumnType::Json => ConvertedType::Json,
-
-            // FIXME: how should we map them JsonBinary type ?
-            // #[cfg(feature = "with-json")]
-            // ColumnType::JsonBinary => ConvertedType::Json,
-            ColumnType::JsonBinary => ConvertedType::String,
-
+            ColumnType::Json | ColumnType::JsonBinary => ConvertedType::Json,
             #[cfg(not(feature = "with-uuid"))]
             ColumnType::Uuid => ConvertedType::String,
             #[cfg(feature = "with-uuid")]
@@ -272,7 +266,7 @@ impl TypesMapHelper {
             | ColumnType::VarBit(_) => Some(TypeRef::named(TypeRef::STRING)),
             ColumnType::Boolean => Some(TypeRef::named(TypeRef::BOOLEAN)),
             // FIXME: support json type
-            ColumnType::Json | ColumnType::JsonBinary => None,
+            ColumnType::Json | ColumnType::JsonBinary => Some(TypeRef::named("JSON")),
             ColumnType::Uuid => Some(TypeRef::named(TypeRef::STRING)),
             ColumnType::Enum {
                 name: enum_name,

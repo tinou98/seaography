@@ -182,7 +182,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<T> async_graphql::dataloader::Loader<KeyComplex<T>> for OneToManyLoader<T>
 where
     T: sea_orm::EntityTrait,
@@ -195,90 +194,89 @@ where
         &self,
         keys: &[KeyComplex<T>],
     ) -> Result<HashMap<KeyComplex<T>, Self::Value>, Self::Error> {
-        let items: HashMap<HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>> = keys
-            .iter()
-            .cloned()
-            .map(|item: KeyComplex<T>| {
-                (
-                    HashableGroupKey {
-                        stmt: item.meta.stmt,
-                        columns: item.meta.columns,
-                        filters: item.meta.filters,
-                        order_by: item.meta.order_by,
+            let items: HashMap<HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>> = keys
+                .iter()
+                .cloned()
+                .map(|item: KeyComplex<T>| {
+                    (
+                        HashableGroupKey {
+                            stmt: item.meta.stmt,
+                            columns: item.meta.columns,
+                            filters: item.meta.filters,
+                            order_by: item.meta.order_by,
+                        },
+                        item.key,
+                    )
+                })
+                .fold(
+                    HashMap::<HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>>::new(),
+                    |mut acc: HashMap<HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>>,
+                     cur: (HashableGroupKey<T>, Vec<sea_orm::Value>)| {
+                        match acc.get_mut(&cur.0) {
+                            Some(items) => {
+                                items.push(cur.1);
+                            }
+                            None => {
+                                acc.insert(cur.0, vec![cur.1]);
+                            }
+                        }
+
+                        acc
                     },
-                    item.key,
-                )
-            })
-            .fold(
-                HashMap::<HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>>::new(),
-                |mut acc: HashMap<HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>>,
-                 cur: (HashableGroupKey<T>, Vec<sea_orm::Value>)| {
-                    match acc.get_mut(&cur.0) {
-                        Some(items) => {
-                            items.push(cur.1);
-                        }
-                        None => {
-                            acc.insert(cur.0, vec![cur.1]);
-                        }
-                    }
+                );
 
-                    acc
-                },
-            );
+            let promises: HashMap<HashableGroupKey<T>, _> = items
+                .into_iter()
+                .map(
+                    |(key, values): (HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>)| {
+                        let cloned_key = key.clone();
 
-        let promises: HashMap<HashableGroupKey<T>, _> = items
-            .into_iter()
-            .map(
-                |(key, values): (HashableGroupKey<T>, Vec<Vec<sea_orm::Value>>)| {
-                    let cloned_key = key.clone();
+                        let stmt = key.stmt;
 
-                    let stmt = key.stmt;
-
-                    let condition = match key.filters {
-                        Some(condition) => Condition::all().add(condition),
-                        None => Condition::all(),
-                    };
-                    let tuple =
-                        sea_orm::sea_query::Expr::tuple(key.columns.iter().map(
+                        let condition = match key.filters {
+                            Some(condition) => Condition::all().add(condition),
+                            None => Condition::all(),
+                        };
+                        let tuple = sea_orm::sea_query::Expr::tuple(key.columns.iter().map(
                             |column: &T::Column| sea_orm::sea_query::Expr::col(*column).into(),
                         ));
-                    let condition =
-                        condition.add(tuple.in_tuples(values.into_iter().map(ValueTuple::Many)));
-                    let stmt = stmt.filter(condition);
+                        let condition = condition
+                            .add(tuple.in_tuples(values.into_iter().map(ValueTuple::Many)));
+                        let stmt = stmt.filter(condition);
 
-                    let stmt = apply_order(stmt, key.order_by);
+                        let stmt = apply_order(stmt, key.order_by);
 
-                    (cloned_key, stmt.all(&self.connection))
-                },
-            )
-            .collect();
+                        (cloned_key, stmt.all(&self.connection))
+                    },
+                )
+                .collect();
 
-        let mut results: HashMap<KeyComplex<T>, Vec<T::Model>> = HashMap::new();
+            let mut results: HashMap<KeyComplex<T>, Vec<T::Model>> = HashMap::new();
 
-        for (key, promise) in promises.into_iter() {
-            let key = key as HashableGroupKey<T>;
-            let result: Vec<T::Model> = promise.await.map_err(Arc::new)?;
-            for item in result.into_iter() {
-                let key = &KeyComplex::<T> {
-                    key: key
-                        .columns
-                        .iter()
-                        .map(|col: &T::Column| item.get(*col))
-                        .collect(),
-                    meta: key.clone(),
-                };
-                match results.get_mut(key) {
-                    Some(results) => {
-                        results.push(item);
-                    }
-                    None => {
-                        results.insert(key.clone(), vec![item]);
-                    }
-                };
+            for (key, promise) in promises.into_iter() {
+                let key = key as HashableGroupKey<T>;
+                let result: Vec<T::Model> = promise.await.map_err(Arc::new)?;
+                for item in result.into_iter() {
+                    let key = &KeyComplex::<T> {
+                        key: key
+                            .columns
+                            .iter()
+                            .map(|col: &T::Column| item.get(*col))
+                            .collect(),
+                        meta: key.clone(),
+                    };
+                    match results.get_mut(key) {
+                        Some(results) => {
+                            results.push(item);
+                        }
+                        None => {
+                            results.insert(key.clone(), vec![item]);
+                        }
+                    };
+                }
             }
-        }
 
-        Ok(results)
+            Ok(results)
     }
 }
 
@@ -303,7 +301,6 @@ where
     }
 }
 
-#[async_trait::async_trait]
 impl<T> async_graphql::dataloader::Loader<KeyComplex<T>> for OneToOneLoader<T>
 where
     T: sea_orm::EntityTrait,

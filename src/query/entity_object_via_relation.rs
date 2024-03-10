@@ -5,7 +5,8 @@ use async_graphql::{
 };
 use heck::ToSnakeCase;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Iden, ModelTrait, QueryFilter, Related,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Iden, ModelTrait, QueryFilter,
+    Related, Select,
 };
 
 use crate::{
@@ -22,23 +23,21 @@ pub struct EntityObjectViaRelationBuilder {
 }
 
 impl EntityObjectViaRelationBuilder {
-    /// used to get a GraphQL field for an SeaORM entity related trait
-    pub fn get_relation<T, R>(&self, name: &str) -> Field
+    pub fn get_explicit_relation<T, R>(
+        &self,
+        name: &str,
+        from_col: T::Column,
+        to_col: R::Column,
+        is_owner: bool,
+        stmt: Option<Select<R>>,
+    ) -> Field
     where
-        T: Related<R>,
         T: EntityTrait,
         R: EntityTrait,
         <T as EntityTrait>::Model: Sync,
-        <R as sea_orm::EntityTrait>::Model: Sync,
-        <<T as sea_orm::EntityTrait>::Column as std::str::FromStr>::Err: core::fmt::Debug,
-        <<R as sea_orm::EntityTrait>::Column as std::str::FromStr>::Err: core::fmt::Debug,
+        <R as EntityTrait>::Model: Sync,
     {
         let context: &'static BuilderContext = self.context;
-        let to_relation_definition = <T as Related<R>>::to();
-        let (via_relation_definition, is_via_relation) = match <T as Related<R>>::via() {
-            Some(def) => (def, true),
-            None => (<T as Related<R>>::to(), false),
-        };
 
         let entity_object_builder = EntityObjectBuilder { context };
         let connection_object_builder = ConnectionObjectBuilder { context };
@@ -48,26 +47,9 @@ impl EntityObjectViaRelationBuilder {
         let object_name: String = entity_object_builder.type_name::<R>();
         let guard = self.context.guards.entity_guards.get(&object_name);
 
-        let from_col = <T::Column as std::str::FromStr>::from_str(
-            via_relation_definition
-                .from_col
-                .to_string()
-                .to_snake_case()
-                .as_str(),
-        )
-        .unwrap();
-
-        let to_col = <R::Column as std::str::FromStr>::from_str(
-            to_relation_definition
-                .to_col
-                .to_string()
-                .to_snake_case()
-                .as_str(),
-        )
-        .unwrap();
-
-        let field = match via_relation_definition.is_owner {
+        let field = match is_owner {
             false => Field::new(name, TypeRef::named(&object_name), move |ctx| {
+                let stmt = stmt.clone();
                 FieldFuture::new(async move {
                     let guard_flag = if let Some(guard) = guard {
                         (*guard)(&ctx)
@@ -93,11 +75,7 @@ impl EntityObjectViaRelationBuilder {
 
                     let loader = ctx.data_unchecked::<DataLoader<OneToOneLoader<R>>>();
 
-                    let stmt = if <T as Related<R>>::via().is_some() {
-                        <T as Related<R>>::find_related()
-                    } else {
-                        R::find()
-                    };
+                    let stmt = stmt.unwrap_or(R::find());
 
                     let filters = ctx.args.get(&context.entity_query_field.filters);
                     let filters = get_filter_conditions::<R>(context, filters);
@@ -126,6 +104,7 @@ impl EntityObjectViaRelationBuilder {
                 name,
                 TypeRef::named_nn(connection_object_builder.type_name(&object_name)),
                 move |ctx| {
+                    let stmt = stmt.clone();
                     let context: &'static BuilderContext = context;
                     FieldFuture::new(async move {
                         let guard_flag = if let Some(guard) = guard {
@@ -152,11 +131,8 @@ impl EntityObjectViaRelationBuilder {
                             .try_downcast_ref::<T::Model>()
                             .expect("Parent should exist");
 
-                        let stmt = if <T as Related<R>>::via().is_some() {
-                            <T as Related<R>>::find_related()
-                        } else {
-                            R::find()
-                        };
+                        let is_via_relation = stmt.is_some();
+                        let stmt = stmt.unwrap_or(R::find());
 
                         let filters = ctx.args.get(&context.entity_query_field.filters);
                         let filters = get_filter_conditions::<R>(context, filters);
@@ -201,7 +177,7 @@ impl EntityObjectViaRelationBuilder {
             ),
         };
 
-        match via_relation_definition.is_owner {
+        match is_owner {
             false => field,
             true => field
                 .argument(InputValue::new(
@@ -217,5 +193,48 @@ impl EntityObjectViaRelationBuilder {
                     TypeRef::named(&context.pagination_input.type_name),
                 )),
         }
+    }
+
+    /// used to get a GraphQL field for an SeaORM entity related trait
+    pub fn get_relation<T, R>(&self, name: &str) -> Field
+    where
+        T: Related<R>,
+        T: EntityTrait,
+        R: EntityTrait,
+        <T as EntityTrait>::Model: Sync,
+        <R as sea_orm::EntityTrait>::Model: Sync,
+        <<T as sea_orm::EntityTrait>::Column as std::str::FromStr>::Err: core::fmt::Debug,
+        <<R as sea_orm::EntityTrait>::Column as std::str::FromStr>::Err: core::fmt::Debug,
+    {
+        let to_relation_definition = <T as Related<R>>::to();
+        let via_relation_definition = <T as Related<R>>::via().unwrap_or(<T as Related<R>>::to());
+
+        let from_col = <T::Column as std::str::FromStr>::from_str(
+            via_relation_definition
+                .from_col
+                .to_string()
+                .to_snake_case()
+                .as_str(),
+        )
+        .unwrap();
+
+        let to_col = <R::Column as std::str::FromStr>::from_str(
+            to_relation_definition
+                .to_col
+                .to_string()
+                .to_snake_case()
+                .as_str(),
+        )
+        .unwrap();
+
+        let stmt = <T as Related<R>>::via().map(|_| <T as Related<R>>::find_related());
+
+        self.get_explicit_relation::<T, R>(
+            name,
+            from_col,
+            to_col,
+            to_relation_definition.is_owner,
+            stmt,
+        )
     }
 }

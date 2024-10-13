@@ -1,6 +1,8 @@
 use async_graphql::{
     dataloader::DataLoader,
-    dynamic::{Enum, Field, FieldFuture, InputObject, Object, Schema, SchemaBuilder, TypeRef},
+    dynamic::{
+        Enum, Field, FieldFuture, InputObject, Object, Scalar, Schema, SchemaBuilder, TypeRef,
+    },
 };
 use sea_orm::{ActiveEnum, ActiveModelTrait, EntityTrait, IntoActiveModel};
 
@@ -259,10 +261,20 @@ impl Builder {
         let filter_types_map_helper = FilterTypesMapHelper {
             context: self.context,
         };
-        let schema = filter_types_map_helper
+        let mut schema = filter_types_map_helper
             .get_input_filters()
             .into_iter()
             .fold(schema, |schema, cur| schema.register(cur));
+
+        if let Some(json_scalar) = &self.context.types.json_name {
+            schema = schema.register(
+                Scalar::new(json_scalar)
+                    .description("The `JSON` scalar type represents raw JSON values")
+                    .specified_by_url(
+                        "http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf",
+                    ),
+            );
+        }
 
         schema
             .register(

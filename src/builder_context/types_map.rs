@@ -22,6 +22,8 @@ pub struct TypesMapConfig {
     pub time_library: TimeLibrary,
     /// used to configure default decimal library
     pub decimal_library: DecimalLibrary,
+    /// used to expose Json as a Scalar
+    pub json_name: Option<String>,
 }
 
 impl std::default::Default for TypesMapConfig {
@@ -44,6 +46,8 @@ impl std::default::Default for TypesMapConfig {
             decimal_library: DecimalLibrary::Decimal,
             #[cfg(all(not(feature = "with-decimal"), feature = "with-bigdecimal"))]
             decimal_library: DecimalLibrary::BigDecimal,
+
+            json_name: None,
         }
     }
 }
@@ -158,14 +162,9 @@ impl TypesMapHelper {
             ColumnType::Boolean => ConvertedType::Bool,
 
             #[cfg(not(feature = "with-json"))]
-            ColumnType::Json => ConvertedType::String,
+            ColumnType::Json | ColumnType::JsonBinary => ConvertedType::String,
             #[cfg(feature = "with-json")]
-            ColumnType::Json => ConvertedType::Json,
-
-            // FIXME: how should we map them JsonBinary type ?
-            // #[cfg(feature = "with-json")]
-            // ColumnType::JsonBinary => ConvertedType::Json,
-            ColumnType::JsonBinary => ConvertedType::String,
+            ColumnType::Json | ColumnType::JsonBinary => ConvertedType::Json,
 
             #[cfg(not(feature = "with-uuid"))]
             ColumnType::Uuid => ConvertedType::String,
@@ -270,8 +269,9 @@ impl TypesMapHelper {
             | ColumnType::VarBit(_)
             | ColumnType::Blob => Some(TypeRef::named(TypeRef::STRING)),
             ColumnType::Boolean => Some(TypeRef::named(TypeRef::BOOLEAN)),
-            // FIXME: support json type
-            ColumnType::Json | ColumnType::JsonBinary => None,
+            ColumnType::Json | ColumnType::JsonBinary => {
+                self.context.types.json_name.as_ref().map(TypeRef::named)
+            }
             ColumnType::Uuid => Some(TypeRef::named(TypeRef::STRING)),
             ColumnType::Enum {
                 name: enum_name,

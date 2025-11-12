@@ -30,6 +30,24 @@ where
     }
 }
 
+pub fn get_having_all_conditions<T>(
+    context: &'static BuilderContext,
+    ctx: &ResolverContext,
+    condition: Condition,
+    having: Option<ValueAccessor>,
+) -> SeaResult<Condition>
+where
+    T: EntityTrait,
+{
+    if let Some(having) = having {
+        let having = having.object()?;
+        let related = ctx.data_unchecked::<RelatedEntityFilter<T>>();
+        related.apply_all(context, condition, &having)
+    } else {
+        Ok(condition)
+    }
+}
+
 pub struct RelatedEntityFilterBuilder {
     pub context: &'static BuilderContext,
 }
@@ -86,6 +104,27 @@ where
                 let filter = filter.object()?;
                 if let Some(additional) = (field.filter_condition_fn)(context, &filter)? {
                     condition = condition.add(additional);
+                }
+            }
+        }
+        Ok(condition)
+    }
+
+    fn apply_all(
+        &self,
+        context: &'static BuilderContext,
+        mut condition: Condition,
+        having: &ObjectAccessor,
+    ) -> SeaResult<Condition> {
+        for field in &self.fields {
+            if let Some(filter) = having.get(&field.name) {
+                let list = filter.list()?;
+
+                for filter in list.iter() {
+                    let filter = filter.object()?;
+                    if let Some(additional) = (field.filter_condition_fn)(context, &filter)? {
+                        condition = condition.add(additional);
+                    }
                 }
             }
         }

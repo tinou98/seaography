@@ -13,9 +13,9 @@ use crate::{
     CustomUnion, EdgeObjectBuilder, EntityCreateBatchMutationBuilder,
     EntityCreateOneMutationBuilder, EntityDeleteMutationBuilder, EntityInputBuilder,
     EntityObjectBuilder, EntityQueryFieldBuilder, EntityUpdateMutationBuilder, FilterInputBuilder,
-    FilterTypesMapHelper, HavingInputBuilder, OffsetInputBuilder, OneToManyLoader, OneToOneLoader,
-    OrderByEnumBuilder, OrderInputBuilder, PageInfoObjectBuilder, PageInputBuilder,
-    PaginationInfoObjectBuilder, PaginationInputBuilder, RelatedEntityFilter,
+    FilterTypesMapHelper, HavingAllInputBuilder, HavingInputBuilder, OffsetInputBuilder,
+    OneToManyLoader, OneToOneLoader, OrderByEnumBuilder, OrderInputBuilder, PageInfoObjectBuilder,
+    PageInputBuilder, PaginationInfoObjectBuilder, PaginationInputBuilder, RelatedEntityFilter,
     RelatedEntityFilterField,
 };
 
@@ -148,12 +148,17 @@ impl Builder {
         };
         let having = having_input_builder.to_object::<T>(related_entity_filter);
 
+        let having_all_input_builder = HavingAllInputBuilder {
+            context: self.context,
+        };
+        let having_all = having_all_input_builder.to_object::<T>(related_entity_filter);
+
         let order_input_builder = OrderInputBuilder {
             context: self.context,
         };
         let order = order_input_builder.to_object::<T>();
 
-        self.inputs.extend([filter, having, order]);
+        self.inputs.extend([filter, having, having_all, order]);
 
         let entity_query_field_builder = EntityQueryFieldBuilder {
             context: self.context,

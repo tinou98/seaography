@@ -633,7 +633,7 @@ pub fn converted_value_to_sea_orm_value(
             sea_orm::Value::Double(Some(value))
         }
         ConvertedType::String | ConvertedType::Enum(_) | ConvertedType::Custom(_) => {
-            let value = value.string()?;
+            let value = value.enum_name()?;
             sea_orm::Value::String(Some(value.to_string()))
         }
         ConvertedType::Char => {

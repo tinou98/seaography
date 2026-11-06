@@ -4,8 +4,8 @@ use async_graphql::{
 };
 use heck::{ToLowerCamelCase, ToSnakeCase, ToUpperCamelCase};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ColumnType, EntityName, EntityTrait, IdenStatic, Iterable,
-    ModelTrait, TryIntoModel,
+    sea_query::OptionEnum, ActiveModelTrait, ColumnTrait, ColumnType, EntityName, EntityTrait,
+    IdenStatic, Iterable, ModelTrait, TryIntoModel,
 };
 
 use crate::{guard_error, EntityColumnId, OperationType, SeaResult, SeaographyError};
@@ -278,6 +278,10 @@ pub(crate) fn sea_query_value_to_graphql_value(
                     .collect(),
             )
         }),
+        sea_orm::Value::Enum(enum_value) => match enum_value {
+            OptionEnum::Some(val) => Some(Value::from(val.value)),
+            OptionEnum::None(_) => None,
+        },
 
         #[cfg(feature = "with-json")]
         #[cfg_attr(docsrs, doc(cfg(feature = "with-json")))]

@@ -1,6 +1,9 @@
 use async_graphql::dynamic::FieldValue;
 use itertools::Itertools;
-use sea_orm::{sea_query::ValueTuple, DynIden, Identity};
+use sea_orm::{
+    sea_query::{OptionEnum, ValueTuple},
+    DynIden, Identity,
+};
 use std::any::Any;
 
 /// used to encode the primary key values of a SeaORM entity to a String
@@ -80,6 +83,14 @@ pub fn encode_cursor(values: ValueTuple) -> String {
                         "String[-1]:".into()
                     }
                 }
+                sea_orm::Value::Enum(enum_option) => match enum_option {
+                    OptionEnum::Some(v) => {
+                        format!("Enum{}[{}]:{}", v.type_name, v.value.len(), v.value)
+                    }
+                    OptionEnum::None(type_name) => {
+                        format!("Enum{type_name}[-1]:")
+                    }
+                },
                 #[cfg(feature = "with-uuid")]
                 sea_orm::Value::Uuid(value) => {
                     if let Some(value) = value {
@@ -252,6 +263,18 @@ pub fn decode_cursor(s: &str) -> Result<ValueTuple, sea_orm::DbErr> {
                                 sea_orm::Value::String(None)
                             } else {
                                 sea_orm::Value::String(Some(data_buffer))
+                            }
+                        }
+                        type_name if let Some(enum_type) = type_name.strip_prefix("Enum") => {
+                            if length.eq(&-1) {
+                                sea_orm::Value::Enum(OptionEnum::None(enum_type.into()))
+                            } else {
+                                sea_orm::Value::Enum(OptionEnum::Some(Box::new(
+                                    sea_orm::sea_query::Enum {
+                                        type_name: enum_type.into(),
+                                        value: data_buffer.into(),
+                                    },
+                                )))
                             }
                         }
                         #[cfg(feature = "with-uuid")]

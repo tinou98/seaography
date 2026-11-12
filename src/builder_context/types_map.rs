@@ -539,7 +539,9 @@ pub fn converted_type_to_sea_orm_array_type(
         ConvertedType::Bytes => Ok(sea_orm::sea_query::value::ArrayType::Bytes),
         #[cfg(feature = "with-postgres-array")]
         ConvertedType::Array(_) => Err(crate::SeaographyError::NestedArrayConversionError),
-        ConvertedType::Enum(_) => Ok(sea_orm::sea_query::value::ArrayType::String),
+        ConvertedType::Enum(enum_name) => Ok(sea_orm::sea_query::value::ArrayType::Enum(Box::new(
+            Arc::from(enum_name.as_ref()),
+        ))),
         ConvertedType::Custom(_) => Ok(sea_orm::sea_query::value::ArrayType::String),
         #[cfg(feature = "with-json")]
         ConvertedType::Json => Ok(sea_orm::sea_query::value::ArrayType::String),
@@ -632,9 +634,18 @@ pub fn converted_value_to_sea_orm_value(
             let value = value.f64()?;
             sea_orm::Value::Double(Some(value))
         }
-        ConvertedType::String | ConvertedType::Enum(_) | ConvertedType::Custom(_) => {
+        ConvertedType::String | ConvertedType::Custom(_) => {
             let value = value.enum_name()?;
             sea_orm::Value::String(Some(value.to_string()))
+        }
+        ConvertedType::Enum(enum_name) => {
+            let value = value.enum_name()?;
+            sea_orm::Value::Enum(sea_orm::sea_query::OptionEnum::Some(Box::new(
+                sea_orm::sea_query::Enum {
+                    type_name: enum_name.as_str().into(),
+                    value: value.to_owned().into(),
+                },
+            )))
         }
         ConvertedType::Char => {
             let value = value.string()?;
